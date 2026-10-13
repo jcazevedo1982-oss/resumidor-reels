@@ -7,7 +7,7 @@ import google.generativeai as genai
 from docx import Document
 from io import BytesIO
 
-# Configuração inicial da página
+# Configuração da página
 st.set_page_config(
     page_title="Instagram Reel Summarizer",
     page_icon="🎬",
@@ -17,7 +17,7 @@ st.set_page_config(
 st.title("🎬 Resumidor de Reels do Instagram")
 st.write("Insere o link de um Reel para transcrever, resumir e exportar para Word.")
 
-# Entrada da chave de API e do URL do Reel
+# Entrada da chave da API e do URL do Reel
 api_key = st.sidebar.text_input("Chave API do Gemini", type="password", help="Obtém gratuitamente em https://aistudio.google.com/")
 reel_url = st.text_input("URL do Reel do Instagram:", placeholder="https://www.instagram.com/reel/...")
 
@@ -57,8 +57,27 @@ def download_reel_audio(url):
             
     raise FileNotFoundError("Não foi possível extrair o vídeo do Reel.")
 
+def get_active_gemini_model():
+    """Lista dinamicamente os modelos ativos associados à chave de API do utilizador."""
+    supported_models = []
+    for m in genai.list_models():
+        if 'generateContent' in m.supported_generation_methods:
+            # Substitui 'models/' no nome se presente
+            name = m.name.replace('models/', '')
+            supported_models.append(name)
+            
+    # Dá prioridade a modelos Flash se disponíveis
+    for m_name in supported_models:
+        if 'flash' in m_name:
+            return m_name
+            
+    if supported_models:
+        return supported_models[0]
+        
+    raise RuntimeError("Nenhum modelo Gemini com suporte a 'generateContent' foi encontrado na tua conta.")
+
 def create_word_docx(summary_text, transcription_text):
-    """Gera um documento Word (.docx) em memória."""
+    """Gera o documento Word (.docx)."""
     doc = Document()
     doc.add_heading('Resumo do Reel do Instagram', level=0)
     
@@ -84,51 +103,31 @@ if st.button("Processar Reel", type="primary"):
         temp_file = None
         temp_dir = None
         try:
-            # Step 1: Download do vídeo/áudio
+            # 1. Download do áudio do Reel
             with st.spinner("1/4 A obter o Reel do Instagram..."):
                 temp_file, temp_dir = download_reel_audio(reel_url)
             
-            # Step 2: Transcrição com Whisper
+            # 2. Transcrição do áudio com Whisper
             with st.spinner("2/4 A transcrever o áudio (Whisper)..."):
                 model = load_whisper_model()
                 result = model.transcribe(temp_file)
                 transcription = result['text']
             
-            # Step 3: Resumo com Gemini (com fallback automático de modelos)
-            with st.spinner("3/4 A gerar o resumo com IA..."):
+            # 3. Identificação e geração do resumo com o Gemini
+            with st.spinner("3/4 A ligar à IA e a gerar resumo..."):
                 genai.configure(api_key=api_key)
+                model_name = get_active_gemini_model()
                 
-                # Lista de modelos por ordem de prioridade
-                available_models = [
-                    'gemini-2.5-flash',
-                    'gemini-1.5-flash',
-                    'gemini-1.5-pro',
-                    'gemini-pro'
-                ]
-                
-                summary = None
-                last_error = None
-                
-                for model_name in available_models:
-                    try:
-                        gemini_model = genai.GenerativeModel(model_name)
-                        prompt = (
-                            "Lê a seguinte transcrição de um Reel do Instagram e cria um resumo claro, "
-                            "bem formatado e estruturado em pontos principais:\n\n"
-                            f"{transcription}"
-                        )
-                        response = gemini_model.generate_content(prompt)
-                        if response and response.text:
-                            summary = response.text
-                            break
-                    except Exception as err:
-                        last_error = err
-                        continue
-                        
-                if not summary:
-                    raise RuntimeError(f"Erro ao ligar ao Gemini: {str(last_error)}")
+                gemini_model = genai.GenerativeModel(model_name)
+                prompt = (
+                    "Lê a seguinte transcrição de um Reel do Instagram e cria um resumo claro, "
+                    "bem formatado e estruturado em tópicos principais:\n\n"
+                    f"{transcription}"
+                )
+                response = gemini_model.generate_content(prompt)
+                summary = response.text
 
-            # Sucesso e visualização
+            # Apresentação dos Resultados
             st.success("Processamento concluído!")
             
             st.subheader("📝 Resumo Gerado")
@@ -137,7 +136,7 @@ if st.button("Processar Reel", type="primary"):
             with st.expander("Ver Transcrição Completa"):
                 st.write(transcription)
 
-            # Step 4: Exportação para Word
+            # 4. Exportação para Word
             doc_file = create_word_docx(summary, transcription)
             st.download_button(
                 label="📄 Transferir Ficheiro Word (.docx)",
@@ -150,7 +149,7 @@ if st.button("Processar Reel", type="primary"):
             st.error(f"Ocorreu um erro ao processar: {str(e)}")
             
         finally:
-            # Limpeza dos ficheiros temporários no servidor
+            # Limpeza de ficheiros temporários
             if temp_dir and os.path.exists(temp_dir):
                 for f in os.listdir(temp_dir):
                     try:
