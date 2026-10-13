@@ -1,5 +1,5 @@
 streamlit
-yt-dlp
+instaloader
 openai-whisper
 google-generativeai
 python-docx
