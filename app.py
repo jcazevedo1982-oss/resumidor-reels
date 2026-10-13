@@ -92,7 +92,7 @@ if st.button("Processar Reel", type="primary"):
             
             with st.spinner("3/4 A gerar o resumo com IA..."):
                 genai.configure(api_key=api_key)
-                gemini_model = genai.GenerativeModel('gemini-1.5-flash')
+                gemini_model = genai.GenerativeModel('gemini-1.5-flash-latest')
                 prompt = f"Lê a seguinte transcrição de um Reel e faz um resumo claro e bem formatado com os tópicos principais:\n\n{transcription}"
                 response = gemini_model.generate_content(prompt)
                 summary = response.text
