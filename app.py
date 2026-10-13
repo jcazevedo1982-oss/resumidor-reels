@@ -57,25 +57,6 @@ def download_reel_audio(url):
             
     raise FileNotFoundError("Não foi possível extrair o vídeo do Reel.")
 
-def get_active_gemini_model():
-    """Lista dinamicamente os modelos ativos associados à chave de API do utilizador."""
-    supported_models = []
-    for m in genai.list_models():
-        if 'generateContent' in m.supported_generation_methods:
-            # Substitui 'models/' no nome se presente
-            name = m.name.replace('models/', '')
-            supported_models.append(name)
-            
-    # Dá prioridade a modelos Flash se disponíveis
-    for m_name in supported_models:
-        if 'flash' in m_name:
-            return m_name
-            
-    if supported_models:
-        return supported_models[0]
-        
-    raise RuntimeError("Nenhum modelo Gemini com suporte a 'generateContent' foi encontrado na tua conta.")
-
 def create_word_docx(summary_text, transcription_text):
     """Gera o documento Word (.docx)."""
     doc = Document()
@@ -113,19 +94,33 @@ if st.button("Processar Reel", type="primary"):
                 result = model.transcribe(temp_file)
                 transcription = result['text']
             
-            # 3. Identificação e geração do resumo com o Gemini
-            with st.spinner("3/4 A ligar à IA e a gerar resumo..."):
+            # 3. Resumo com o modelo Gemini atualizado
+            with st.spinner("3/4 A gerar o resumo com IA..."):
                 genai.configure(api_key=api_key)
-                model_name = get_active_gemini_model()
                 
-                gemini_model = genai.GenerativeModel(model_name)
-                prompt = (
-                    "Lê a seguinte transcrição de um Reel do Instagram e cria um resumo claro, "
-                    "bem formatado e estruturado em tópicos principais:\n\n"
-                    f"{transcription}"
-                )
-                response = gemini_model.generate_content(prompt)
-                summary = response.text
+                # Nomes de modelos suportados para tentar por ordem
+                candidate_models = ['gemini-3.8-flash', 'gemini-1.5-flash', 'gemini-1.5-flash-002']
+                summary = None
+                last_err = None
+                
+                for m_name in candidate_models:
+                    try:
+                        gemini_model = genai.GenerativeModel(m_name)
+                        prompt = (
+                            "Lê a seguinte transcrição de um Reel do Instagram e cria um resumo claro, "
+                            "bem formatado e estruturado em tópicos principais:\n\n"
+                            f"{transcription}"
+                        )
+                        response = gemini_model.generate_content(prompt)
+                        if response and response.text:
+                            summary = response.text
+                            break
+                    except Exception as err:
+                        last_err = err
+                        continue
+                
+                if not summary:
+                    raise RuntimeError(f"Erro ao gerar resumo no Gemini: {str(last_err)}")
 
             # Apresentação dos Resultados
             st.success("Processamento concluído!")
