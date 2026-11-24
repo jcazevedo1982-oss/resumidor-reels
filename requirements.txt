@@ -1,5 +1,0 @@
-streamlit
-instaloader
-openai-whisper
-google-generativeai
-python-docx
