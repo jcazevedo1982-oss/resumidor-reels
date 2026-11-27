@@ -6,10 +6,26 @@ import streamlit as st
 st.set_page_config(page_title="Resumidor de Reels", page_icon="🎬")
 st.title("🎬 Resumidor de Vídeos / Reels")
 
-# Lê a chave da Groq dos Secrets do Streamlit
 client = Groq(api_key=st.secrets["GROQ_API_KEY"])
 
-# 1. Upload do vídeo descarregado
+
+def obter_modelo_chat():
+  preferidos = [
+      "llama-3.1-8b-instant",
+      "openai/gpt-oss-120b",
+      "openai/gpt-oss-20b",
+      "qwen/qwen3-32b",
+  ]
+  try:
+    disponiveis = {m.id for m in client.models.list().data}
+    for modelo in preferidos:
+      if modelo in disponiveis:
+        return modelo
+  except Exception:
+    pass
+  return "llama-3.1-8b-instant"
+
+
 uploaded_file = st.file_uploader(
     "Carrega o vídeo (.mp4, .mov, .m4a, .mp3)", type=["mp4", "mov", "m4a", "mp3"]
 )
@@ -25,7 +41,7 @@ if uploaded_file is not None:
         tmp_path = tmp_file.name
 
       try:
-        # 2. Transcrição do áudio com Whisper na Groq
+        # 1. Transcrição do áudio
         with open(tmp_path, "rb") as audio_file:
           transcription = client.audio.transcriptions.create(
               file=(uploaded_file.name, audio_file.read()),
@@ -36,9 +52,10 @@ if uploaded_file is not None:
 
         texto_transcrito = transcription
 
-        # 3. Resumo do conteúdo com Llama 3.3
+        # 2. Resumo do conteúdo com modelo ativo
+        modelo_ativo = obter_modelo_chat()
         chat_completion = client.chat.completions.create(
-            model="llama-3.3-70b-versatile",
+            model=modelo_ativo,
             messages=[
                 {
                     "role": "system",
@@ -52,7 +69,7 @@ if uploaded_file is not None:
         )
         resumo = chat_completion.choices[0].message.content
 
-        # 4. Apresentação dos resultados
+        # 3. Apresentação dos resultados
         st.subheader("📝 Resumo")
         st.markdown(resumo)
 
